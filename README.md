@@ -1,52 +1,73 @@
 # Text → Voice
 
-Ứng dụng đơn giản: **dán đoạn văn → chọn giọng → tạo audio → nghe/tải về**. Không còn phòng live, kịch bản, hàng đợi hay bình luận.
+Ứng dụng đơn giản: **dán đoạn văn → chọn giọng → theo dõi tiến trình từng đoạn → nghe / tải audio về**.
 
-## Chạy
+Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ làm đúng một việc.
 
-```powershell
-cd "D:\Web TTS\livestream-ai"
-cmd /c npm run dev
+## Tính năng
+
+- 🎙️ Chuyển văn bản thành giọng nói tiếng Việt (không giới hạn độ dài).
+- 📊 Tiến trình theo từng đoạn: ⏳ chờ → 🔵 đang tạo → ✅ hoàn thành (kèm số giây).
+- 🔐 Đăng nhập, quản lý giọng, cấu hình provider.
+- 🦜 Dùng **VieNeu-TTS** self-host miễn phí (25 giọng preset, clone 3–8s) hoặc **ElevenLabs** (dự phòng).
+- 🧩 Cắt đúng ranh giới câu, ghép audio thành 1 file, chèn nghỉ ngắn giữa các câu.
+
+## Yêu cầu
+
+- **Node.js 22+** (dùng `node:sqlite`, không cần cài database).
+- **Python 3.10+** nếu dùng giọng VieNeu local.
+- Không bắt buộc Docker.
+
+## Cài đặt & chạy
+
+### 1. Web app
+
+```bash
+npm install
+cp .env.example .env      # Windows: copy .env.example .env
+# đổi SESSION_SECRET trong .env
+npm run dev
 ```
 
 Mở http://localhost:3000 → đăng nhập `admin` / `admin123`.
 
-> NPM trên máy này bị chặn bởi PowerShell execution policy nên dùng `cmd /c npm ...`.
+> Nếu PowerShell báo lỗi `npm.ps1`, dùng `cmd /c npm install` / `cmd /c npm run dev`.
 
-Cần **2 terminal** nếu dùng giọng VieNeu:
+### 2. Giọng VieNeu (khuyến nghị)
 
-```powershell
-# Terminal 1 - web
-cd "D:\Web TTS\livestream-ai"
-cmd /c npm run start
-
-# Terminal 2 - giọng VieNeu (API ở :8000)
-cd "D:\Web TTS\livestream-ai\vieneu-server"
+```bash
+pip install vieneu fastapi uvicorn python-multipart
+cd vieneu-server
 python -u server.py
 ```
 
-## Giọng nói
+API chạy ở `http://127.0.0.1:8000/v1`. Sau đó vào web:
 
-- Mặc định dùng **VieNeu-TTS** self-host (`http://127.0.0.1:8000/v1`): 25 giọng preset tiếng Việt, clone 3–8s, miễn phí.
-- Vào **Thư viện giọng** → bấm **"Nhập tất cả"** để lấy 25 giọng preset → chọn giọng (nên dùng các giọng có ⭐ như Mai Anh, Hải Đăng, Trúc Ly).
-- Có thể đổi sang **ElevenLabs** trong trang **Cài đặt** nếu có API key.
-- Không có API key/service: vẫn chạy ở chế độ demo (tiếng beep) để test giao diện.
+1. **Cài đặt** → `TTS_PROVIDER = vieneu` (mặc định), giữ URL mặc định → Lưu.
+2. **Thư viện giọng** → **Nhập tất cả** → 25 giọng preset (⭐ là giọng nên dùng).
+3. **Chuyển văn bản** → chọn giọng → dán text → bấm **Tạo giọng nói**.
 
-## Cấu trúc ngắn gọn
+Ngoài ra có thể dùng Docker: `docker compose -f docker/docker-compose.yml --profile api-cpu up` trong repo gốc của VieNeu.
+
+Không có API key/service: app vẫn chạy ở chế độ demo (tiếng beep) để test giao diện.
+
+## Cấu trúc
 
 ```
-src/app/(dashboard)/dashboard   Trang chuyển văn bản → giọng
+src/app/(dashboard)/dashboard   Trang chuyển văn bản + tiến trình
 src/app/(dashboard)/voices      Thư viện giọng (preset + clone)
-src/app/(dashboard)/settings    API key, provider
-src/app/api/tts                 Nhận text + voiceId → file audio
+src/app/(dashboard)/settings    Provider, API key, thành viên
+src/app/api/tts                 Tạo job / poll tiến trình / audio
 src/app/api/audio/[id]          Phục vụ file audio
 src/lib/integrations.ts         VieNeu / ElevenLabs / demo
+src/lib/audio.ts                Ghép WAV
 src/lib/db.ts                   SQLite (node:sqlite)
-data/                           DB + file audio (gitignore)
+vieneu-server/server.py         API wrapper giọng VieNeu (CPU/GPU)
+data/                           DB + audio (đã gitignore)
 ```
 
 ## Lưu ý
 
-- Không giới hạn độ dài đoạn văn. Với đoạn rất dài trên CPU, thời gian tạo audio sẽ tương ứng dài hơn (VieNeu RTF ≈ 0.5).
+- Trên CPU, VieNeu RTF ≈ 0.5 → đoạn rất dài có thể mất vài phút; app chạy ngầm và hiển thị tiến trình.
 - Clone giọng người khác cần sự đồng ý của họ.
-- Không commit `data/` và `.env` lên git.
+- Không commit `data/`, `.env`, `node_modules` lên git.
