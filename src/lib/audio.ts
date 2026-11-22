@@ -14,8 +14,10 @@ export function contentTypeFor(filePath: string): string {
   return filePath.endsWith(".mp3") ? "audio/mpeg" : "audio/wav";
 }
 
+export const WAV_GAP_MS = 120;
+
 /** Ghep nhieu WAV 48kHz mono 16-bit thanh mot file (bo header trung gian) */
-export function concatWavs(buffers: Buffer[], gapMs = 120): Buffer {
+export function concatWavs(buffers: Buffer[], gapMs = WAV_GAP_MS): Buffer {
   if (!buffers.length) return Buffer.alloc(0);
   const parts = buffers.map((b) => {
     if (b.toString("ascii", 0, 4) !== "RIFF") throw new Error("Khong phai file WAV");

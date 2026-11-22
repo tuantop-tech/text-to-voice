@@ -3,3 +3,7 @@ node_modules
 data
 .env
 *.log
+packaging/runtime/
+packaging/electron/node_modules/
+packaging/electron/dist/
+

@@ -1,0 +1,51 @@
+{
+  "name": "text-to-voice-desktop",
+  "version": "1.0.0",
+  "description": "Chuyen van ban thanh giong noi - goi de chay tren Windows",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build:exe": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.tuantop.text2voice",
+    "productName": "Text to Voice",
+    "asar": true,
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "main.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../runtime/app",
+        "to": "app",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../runtime/python/cpython-3.12.16-windows-x86_64-none",
+        "to": "python",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../runtime/site-packages",
+        "to": "site-packages",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../vieneu-server",
+        "to": "vieneu-server",
+        "filter": ["**/*"]
+      }
+    ]
+  }
+}

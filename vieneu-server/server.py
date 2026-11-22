@@ -6,6 +6,7 @@ import io
 import os
 import tempfile
 import wave
+from pathlib import Path
 
 import numpy as np
 import uvicorn
@@ -25,10 +26,22 @@ FEATURED = (
 )
 
 
+VOICES_FILE = os.environ.get("VIENEU_VOICES_FILE") or str(
+    Path(__file__).parent / "voices" / "phuong.json"
+)
+
+
 def engine():
     global _tts
     if _tts is None:
         _tts = Vieneu()  # v3 Turbo, tu chon ONNX/CPU hoac PyTorch/GPU
+        # Nap giong da clone (vd: Phuong) tu file di kem app — co dinh qua cac lan restart
+        if os.path.exists(VOICES_FILE):
+            try:
+                _tts._load_voices_from_file(Path(VOICES_FILE))
+                print(f"[voices] loaded custom voices from {VOICES_FILE}", flush=True)
+            except Exception as exc:
+                print(f"[voices] load failed: {exc}", flush=True)
     return _tts
 
 

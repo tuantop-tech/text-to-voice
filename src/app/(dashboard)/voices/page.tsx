@@ -9,6 +9,7 @@ type VoiceResp = {
   hasElevenLabs: boolean;
   hasVieNeu: boolean;
   provider: string;
+  defaultVoiceId: number;
 };
 type Preset = { voice_id: string; name: string; gender?: string; featured?: boolean };
 
@@ -21,6 +22,7 @@ export default function VoicesPage() {
   const [provider, setProvider] = useState("vieneu");
   const [preset, setPreset] = useState("");
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [defaultVoiceId, setDefaultVoiceId] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -28,6 +30,7 @@ export default function VoicesPage() {
   const load = () => api<VoiceResp>("/api/voices").then((r) => {
     setData(r);
     if (r.provider) setProvider(r.provider);
+    setDefaultVoiceId(r.defaultVoiceId || 0);
   }).catch((e) => setError(e.message));
   useEffect(() => {
     load();
@@ -40,6 +43,24 @@ export default function VoicesPage() {
       setPresets(r.presets);
     } catch {
       setPresets([]);
+    }
+  }
+
+  async function selectPreset() {
+    if (!preset) return setError("Chọn một giọng preset trước");
+    setBusy(true);
+    setError("");
+    try {
+      const r = await post<{ voice: Voice; defaultVoiceId: number }>("/api/voices/use-preset", {
+        name: preset,
+      });
+      setDefaultVoiceId(r.defaultVoiceId);
+      setNotice(`Đã chọn "${r.voice.name}" làm giọng mặc định. Dùng ngay ở trang Chuyển văn bản.`);
+      load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -124,7 +145,12 @@ export default function VoicesPage() {
                 <div key={v.id} className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-500/10 text-sky-300">♫</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{v.name}</p>
+                    <p className="truncate font-medium">
+                      {v.name}
+                      {v.id === defaultVoiceId && (
+                        <span className="badge ml-2 bg-sky-500/15 text-sky-300">Mặc định</span>
+                      )}
+                    </p>
                     <p className="text-xs text-slate-500">
                       {v.language.toUpperCase()} · {v.gender || "—"} ·{" "}
                       <span className={v.provider === "mock" ? "text-amber-400" : "text-emerald-400"}>
@@ -182,6 +208,16 @@ export default function VoicesPage() {
                   </select>
                 ) : (
                   <p className="text-xs text-slate-500">Chưa lấy được preset — kiểm tra service VieNeu đang chạy.</p>
+                )}
+                {presets.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm mt-2 w-full"
+                    disabled={busy || !preset}
+                    onClick={selectPreset}
+                  >
+                    ✅ Chọn làm giọng mặc định (dùng ngay, không cần tạo)
+                  </button>
                 )}
                 <p className="mt-2 text-xs text-slate-500">Chọn preset thì không cần upload audio mẫu.</p>
               </div>

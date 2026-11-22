@@ -2,15 +2,11 @@ import { NextRequest } from "next/server";
 import db, { now } from "@/lib/db";
 import { authOr401, isResponse, ok, fail } from "@/lib/api";
 import { synthesize } from "@/lib/integrations";
-import { saveAudio, concatWavs } from "@/lib/audio";
+import { saveAudio } from "@/lib/audio";
 import { uid } from "@/lib/utils";
 import type { Voice } from "@/lib/types";
 
-type Piece = { buffer: Buffer; ext: "mp3" | "wav"; provider: string; ms: number };
 
-const piecesStore = globalThis as unknown as { __ttsPieces?: Map<string, Piece[]> };
-if (!piecesStore.__ttsPieces) piecesStore.__ttsPieces = new Map();
-const pieces = piecesStore.__ttsPieces;
 
 // Chi cat dung ranh gioi cau — KHONG BAO GIO cat giua cau.
 function chunkText(text: string, max = 300): string[] {
@@ -20,70 +16,85 @@ function chunkText(text: string, max = 300): string[] {
     .filter(Boolean);
   if (!sentences.length) return [text];
   const out: string[] = [];
-  let cur = "";
   for (const s of sentences) {
-    if (s.length > max) {
-      if (cur) {
-        out.push(cur);
-        cur = "";
-      }
-      const words = s.split(/\s+/);
-      let part = "";
-      for (const w of words) {
-        if (!part) part = w;
-        else if ((part + " " + w).length <= max) part += " " + w;
-        else {
-          out.push(part);
-          part = w;
-        }
-      }
-      if (part) out.push(part);
-    } else if (!cur || (cur + " " + s).length <= max) {
-      cur = cur ? `${cur} ${s}` : s;
-    } else {
-      out.push(cur);
-      cur = s;
+    if (s.length <= max) {
+      out.push(s);
+      continue;
     }
+    // Cau qua dai: chi tach o ranh gioi tu, van coi la nhieu moc dung
+    const words = s.split(/\s+/);
+    let part = "";
+    for (const w of words) {
+      if (!part) part = w;
+      else if ((part + " " + w).length <= max) part += " " + w;
+      else {
+        out.push(part);
+        part = w;
+      }
+    }
+    if (part) out.push(part);
   }
-  if (cur) out.push(cur);
   return out;
 }
 
-async function runJob(jobId: string, voice: Voice, chunks: string[]) {
-  const collected: Piece[] = [];
-  pieces.set(jobId, collected);
+async function runJob(jobId: string, voice: Voice, chunks: string[], fullText: string) {
   try {
-    for (let i = 0; i < chunks.length; i++) {
-      db.prepare("UPDATE tts_jobs SET current_index = ? WHERE id = ?").run(i, jobId);
-      db.prepare("UPDATE tts_job_chunks SET status = 'running' WHERE job_id = ? AND idx = ?").run(jobId, i);
-      try {
-        const r = await synthesize(chunks[i], voice);
-        collected.push({ buffer: r.buffer, ext: r.ext, provider: r.provider, ms: r.durationMs });
-        db.prepare(
-          "UPDATE tts_job_chunks SET status = 'done', duration_ms = ? WHERE job_id = ? AND idx = ?"
-        ).run(r.durationMs, jobId, i);
-        db.prepare("UPDATE tts_jobs SET done = ? WHERE id = ?").run(i + 1, jobId);
-      } catch (err) {
-        db.prepare("UPDATE tts_job_chunks SET status = 'error' WHERE job_id = ? AND idx = ?").run(jobId, i);
-        throw err;
-      }
-    }
+    // Tien trinh hien thi chay dan song song voi viec tao audio.
+    // Audio van duoc tao trong 1 request (doc lien mach), khong cat thanh tung doan.
+    // Uoc luong thoi gian tao (~10 ky tu/giay tren CPU) de tien trinh chay khop thuc te.
+    // Dong thoi uoc luong THOI LUONG AUDIO (~18 ky tu/giay noi) de hien so ngay khi dang tao.
+    const estimatedBuildMs = Math.max(1500, (fullText.length / 10) * 1000);
+    const perChunkMs = Math.min(350, Math.max(120, Math.round(estimatedBuildMs / chunks.length)));
+    const estimatedAudioMs = Math.max(1000, Math.round((fullText.length / 18) * 1000));
+    const totalChars0 = chunks.reduce((n, c) => n + c.length, 0) || 1;
+    const shares0 = chunks.map((c) => Math.round((c.length / totalChars0) * estimatedAudioMs));
 
-    const allWav = collected.every((p) => p.ext === "wav");
-    const buffer = allWav
-      ? concatWavs(collected.map((p) => p.buffer))
-      : Buffer.concat(collected.map((p) => p.buffer));
-    const ext: "mp3" | "wav" = allWav ? "wav" : "mp3";
-    const provider = collected.some((p) => p.provider === "vieneu")
-      ? "vieneu"
-      : collected.some((p) => p.provider === "elevenlabs")
-        ? "elevenlabs"
-        : "mock";
-    const estimated = collected.reduce((n, p) => n + p.ms, 0);
+    // Dat time luong uoc luong ngay tu dau de UI khong hien 00:00 / 0s
+    db.prepare("UPDATE tts_jobs SET duration_ms = ? WHERE id = ?").run(estimatedAudioMs, jobId);
+    let acc0 = 0;
+    chunks.forEach((_c, i) => {
+      acc0 += shares0[i];
+      db.prepare("UPDATE tts_job_chunks SET duration_ms = ? WHERE job_id = ? AND idx = ?").run(
+        acc0,
+        jobId,
+        i
+      );
+    });
+
+    const progressDone = (async () => {
+      let acc = 0;
+      for (let i = 0; i < chunks.length; i++) {
+        db.prepare("UPDATE tts_jobs SET current_index = ? WHERE id = ?").run(i, jobId);
+        db.prepare("UPDATE tts_job_chunks SET status = 'running' WHERE job_id = ? AND idx = ?").run(jobId, i);
+        await new Promise((resolve) => setTimeout(resolve, perChunkMs));
+        acc += shares0[i];
+        db.prepare("UPDATE tts_job_chunks SET status = 'done' WHERE job_id = ? AND idx = ?").run(jobId, i);
+        db.prepare("UPDATE tts_jobs SET done = ?, duration_ms = ? WHERE id = ?").run(i + 1, acc, jobId);
+      }
+    })();
+
+    // Mot request duy nhat cho TOAN BO doan van -> giong doc lien mach, khong bi gay o ranh gioi cau
+    const r = await synthesize(fullText, voice);
+    await progressDone;
+    const ext = r.ext;
+    const buffer = r.buffer;
     const durationMs =
       ext === "wav" && buffer.length >= 44
         ? Math.round((buffer.readUInt32LE(40) / (buffer.readUInt32LE(24) * 2)) * 1000)
-        : estimated;
+        : r.durationMs;
+    const provider = r.provider;
+
+    // Chia thoi luong theo ty le ky tu de co moc cau cho Karaoke/Pause
+    // (chi la moc hien thi — KHONG cat audio that)
+    const totalChars = chunks.reduce((n, c) => n + c.length, 0) || 1;
+    let acc = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      const share = Math.round((chunks[i].length / totalChars) * durationMs);
+      acc += share;
+      db.prepare(
+        "UPDATE tts_job_chunks SET duration_ms = ? WHERE job_id = ? AND idx = ?"
+      ).run(acc, jobId, i);
+    }
 
     const filePath = saveAudio(buffer, ext);
     const info = db
@@ -102,8 +113,6 @@ async function runJob(jobId: string, voice: Voice, chunks: string[]) {
       now(),
       jobId
     );
-  } finally {
-    pieces.delete(jobId);
   }
 }
 
@@ -132,7 +141,7 @@ export async function POST(req: NextRequest) {
   chunks.forEach((c, i) => insertChunk.run(jobId, i, c));
 
   // Chay ngam — client se poll GET de xem tien trinh
-  void runJob(jobId, voice, chunks);
+  void runJob(jobId, voice, chunks, text);
   return ok({ jobId, total: chunks.length });
 }
 
@@ -150,18 +159,30 @@ export async function GET(req: NextRequest) {
     .prepare("SELECT idx, text, status, duration_ms FROM tts_job_chunks WHERE job_id = ? ORDER BY idx")
     .all(jobId) as unknown as { idx: number; text: string; status: string; duration_ms: number }[];
 
+  // Moc cau da duoc tinh luc tao job (chia ty le theo ky tu tren audio lien mach)
+  // duration_ms cua moi chunk chinh la endMs tich luy — khong cong gap lan nua
+  let prevEnd = 0;
+  const boundaries = chunks.map((c) => {
+    const startMs = prevEnd;
+    const endMs = c.duration_ms || 0;
+    prevEnd = endMs;
+    return { idx: c.idx, startMs, endMs };
+  });
+
   return ok({
     job: {
       id: job.id,
       status: job.status,
       total: job.total,
-      done: job.done,
+      // Gioi han o total-1 trong luc audio that chua xong de UI khong bao 100% som
+      done: job.status === "running" ? Math.min(job.done, Math.max(0, job.total - 1)) : job.done,
       currentIndex: job.current_index,
       provider: job.provider,
       error: job.error,
       resultUrl: job.result_audio_id ? `/api/audio/${job.result_audio_id}` : null,
-      durationMs: job.duration_ms || chunks.reduce((n, c) => n + (c.duration_ms || 0), 0),
+      durationMs: job.duration_ms || prevEnd,
     },
     chunks,
+    boundaries,
   });
 }

@@ -1,5 +1,11 @@
 import fs from "node:fs";
+import { Agent, setGlobalDispatcher } from "undici";
 import { makeBeepWav, splitSentences, uid } from "./utils";
+
+// Doan van dai tren CPU co the mat > 5 phut -> nang timeout mac dinh cua fetch
+setGlobalDispatcher(
+  new Agent({ headersTimeout: 20 * 60 * 1000, bodyTimeout: 20 * 60 * 1000 })
+);
 import { getSetting } from "./settings";
 import type { RewriteMode, Voice } from "./types";
 

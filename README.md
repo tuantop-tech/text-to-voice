@@ -4,13 +4,25 @@
 
 Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ làm đúng một việc.
 
+## 📦 Tải bản cài đặt (Windows)
+
+👉 **https://github.com/tuantop-tech/text-to-voice/releases/latest**
+
+Tải file `Text to Voice Setup 1.0.0.exe` (~598 MB), chạy cài đặt, mở app từ Start Menu.
+Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
+Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó dùng offline được.
+
+*Lưu ý: file EXE không nằm trong repo (GitHub giới hạn 100 MB/file) mà được đăng ở mục Releases.*
+
 ## Tính năng
 
 - 🎙️ Chuyển văn bản thành giọng nói tiếng Việt (không giới hạn độ dài).
 - 📊 Tiến trình theo từng đoạn: ⏳ chờ → 🔵 đang tạo → ✅ hoàn thành (kèm số giây).
 - 🔐 Đăng nhập, quản lý giọng, cấu hình provider.
-- 🦜 Dùng **VieNeu-TTS** self-host miễn phí (25 giọng preset, clone 3–8s) hoặc **ElevenLabs** (dự phòng).
-- 🧩 Cắt đúng ranh giới câu, ghép audio thành 1 file, chèn nghỉ ngắn giữa các câu.
+- 🦜 Dùng **VieNeu-TTS** self-host miễn phí (26 giọng gồm giọng **Phương** clone sẵn, đóng gói cùng app) hoặc **ElevenLabs** (dự phòng).
+- 🪟 Cửa sổ riêng **Lời Thoại Phát Live**: chữ Karaoke căn giữa, Play/Pause, phím Space (dừng hết câu → câu kế từ đầu), chỉnh tốc độ, tự đọc lại với tốc độ mới, đồng hồ "Đã chạy (cả phiên)" cộng dồn + "Còn lại".
+- 💾 Tự lưu kịch bản + giọng + audio; chỉ bấm **Tạo mới** mới xóa để làm cái khác.
+- 🧩 Đọc liền mạch 1 request, chia mốc câu theo tỷ lệ ký tự để hiển thị Karaoke (không cắt audio).
 
 ## Yêu cầu
 

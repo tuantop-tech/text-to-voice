@@ -1,6 +1,7 @@
 ﻿import { NextRequest } from "next/server";
 import db, { now } from "@/lib/db";
 import { authOr401, isResponse, ok, fail } from "@/lib/api";
+import { getSetting, setSetting } from "@/lib/settings";
 import { saveUpload } from "@/lib/utils";
 import { cloneVoice, hasElevenLabs, hasVieNeu, voiceProvider } from "@/lib/integrations";
 import type { Voice } from "@/lib/types";
@@ -14,6 +15,7 @@ export async function GET() {
     hasElevenLabs: hasElevenLabs(),
     hasVieNeu: hasVieNeu(),
     provider: voiceProvider(),
+    defaultVoiceId: Number(getSetting("DEFAULT_VOICE_ID", "0")) || 0,
   });
 }
 

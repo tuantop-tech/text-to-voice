@@ -106,6 +106,10 @@ CREATE TABLE IF NOT EXISTS usage_logs (
   detail TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS tts_jobs (
   id TEXT PRIMARY KEY,
   status TEXT NOT NULL,
@@ -139,6 +143,30 @@ if (!jobCols.some((c) => c.name === "duration_ms")) {
 db.prepare(
   "INSERT OR IGNORE INTO users (username, password_hash, role, display_name, created_at) VALUES (?, ?, ?, ?, ?)"
 ).run("admin", hashPassword("admin123"), "admin", "Quản trị", new Date().toISOString());
+
+// Cau hinh mac dinh: VieNeu-TTS + giong Phuong (chi dat khi chua co cai dat)
+const initSetting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+initSetting.run("TTS_PROVIDER", "vieneu");
+initSetting.run("VIENEU_BASE_URL", "http://127.0.0.1:8000/v1");
+// DB cu co san row nhung de trong -> dien lai gia tri mac dinh
+db.prepare("UPDATE settings SET value = 'vieneu' WHERE key = 'TTS_PROVIDER' AND (value = '' OR value IS NULL)").run();
+db.prepare("UPDATE settings SET value = 'http://127.0.0.1:8000/v1' WHERE key = 'VIENEU_BASE_URL' AND (value = '' OR value IS NULL)").run();
+
+// Giong Phuong mac dinh — kem theo app trong file voices/phuong.json (service tu nap)
+const phuong = db.prepare("SELECT id FROM voices WHERE voice_id = 'Phương'").get() as
+  | { id: number }
+  | undefined;
+if (!phuong) {
+  const info = db
+    .prepare(
+      `INSERT INTO voices (name, provider, voice_id, sample_path, language, gender, created_at, created_by)
+       VALUES ('Phương', 'vieneu', 'Phương', '', 'vi', 'Nữ', ?, 1)`
+    )
+    .run(new Date().toISOString());
+  initSetting.run("DEFAULT_VOICE_ID", String(info.lastInsertRowid));
+} else if (!(db.prepare("SELECT value FROM settings WHERE key = 'DEFAULT_VOICE_ID'").get() as { value: string } | undefined)) {
+  initSetting.run("DEFAULT_VOICE_ID", String(phuong.id));
+}
 
 export default db;
 
