@@ -8,7 +8,7 @@ Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ l�
 
 👉 **https://github.com/tuantop-tech/text-to-voice/releases/latest**
 
-Tải file `Text to Voice Setup 1.0.1.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
+Tải file `Text to Voice Setup 1.0.2.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
 Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
 Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó dùng offline được.
 
@@ -26,7 +26,7 @@ Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó 
 - 🦜 Dùng **VieNeu-TTS** self-host miễn phí (26 giọng gồm giọng **Phương** clone sẵn, đóng gói cùng app) hoặc **ElevenLabs** (dự phòng).
 - 🪟 Cửa sổ riêng **Lời Thoại Phát Live**: chữ Karaoke căn giữa, Play/Pause, phím Space (dừng hết câu → câu kế từ đầu), chỉnh tốc độ, tự đọc lại với tốc độ mới, đồng hồ "Đã chạy (cả phiên)" cộng dồn + "Còn lại".
 - 💾 Tự lưu kịch bản + giọng + audio; chỉ bấm **Tạo mới** mới xóa để làm cái khác.
-- 🧩 Đọc liền mạch 1 request, chia mốc câu theo tỷ lệ ký tự để hiển thị Karaoke (không cắt audio).
+- 🧩 Đoạn dài tự chia thành nhiều request nhỏ rồi ghép audio lại, tránh timeout 20 phút và không còn rơi về audio beep. Mốc câu Karaoke được tính theo thời lượng thực của từng request.
 
 ## Yêu cầu
 

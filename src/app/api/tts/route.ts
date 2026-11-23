@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import db, { now } from "@/lib/db";
 import { authOr401, isResponse, ok, fail } from "@/lib/api";
 import { synthesize } from "@/lib/integrations";
-import { saveAudio } from "@/lib/audio";
+import { concatWavs, saveAudio, WAV_GAP_MS } from "@/lib/audio";
 import { uid } from "@/lib/utils";
 import type { Voice } from "@/lib/types";
 
@@ -37,64 +37,105 @@ function chunkText(text: string, max = 300): string[] {
   return out;
 }
 
+// Gom cac cau thanh nhom ngan de moi request VieNeu khong chay qua lau (tranh timeout 20 phut)
+const MAX_BATCH_CHARS = 120;
+function makeBatches(chunks: string[]) {
+  const batches: { indices: number[]; text: string }[] = [];
+  let cur: { indices: number[]; text: string } | null = null;
+  chunks.forEach((c, i) => {
+    if (!cur || cur.text.length + c.length + 1 > MAX_BATCH_CHARS) {
+      if (cur) batches.push(cur);
+      cur = { indices: [], text: "" };
+    }
+    cur.indices.push(i);
+    cur.text += (cur.text ? " " : "") + c;
+  });
+  if (cur) batches.push(cur);
+  return batches;
+}
+
+function wavDurationMs(buf: Buffer) {
+  if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") return 0;
+  const byteRate = buf.readUInt32LE(28);
+  if (!byteRate) return 0;
+  let pos = 12;
+  while (pos + 8 <= buf.length) {
+    const id = buf.toString("ascii", pos, pos + 4);
+    const size = buf.readUInt32LE(pos + 4);
+    if (id === "data") return Math.round((size / byteRate) * 1000);
+    pos += 8 + size + (size % 2);
+  }
+  return 0;
+}
+
 async function runJob(jobId: string, voice: Voice, chunks: string[], fullText: string) {
   try {
-    // Tien trinh hien thi chay dan song song voi viec tao audio.
-    // Audio van duoc tao trong 1 request (doc lien mach), khong cat thanh tung doan.
-    // Uoc luong thoi gian tao (~10 ky tu/giay tren CPU) de tien trinh chay khop thuc te.
-    // Dong thoi uoc luong THOI LUONG AUDIO (~18 ky tu/giay noi) de hien so ngay khi dang tao.
-    const estimatedBuildMs = Math.max(1500, (fullText.length / 10) * 1000);
-    const perChunkMs = Math.min(350, Math.max(120, Math.round(estimatedBuildMs / chunks.length)));
-    const estimatedAudioMs = Math.max(1000, Math.round((fullText.length / 18) * 1000));
-    const totalChars0 = chunks.reduce((n, c) => n + c.length, 0) || 1;
-    const shares0 = chunks.map((c) => Math.round((c.length / totalChars0) * estimatedAudioMs));
-
     // Dat time luong uoc luong ngay tu dau de UI khong hien 00:00 / 0s
+    const estimatedAudioMs = Math.max(1000, Math.round((fullText.length / 18) * 1000));
     db.prepare("UPDATE tts_jobs SET duration_ms = ? WHERE id = ?").run(estimatedAudioMs, jobId);
-    let acc0 = 0;
-    chunks.forEach((_c, i) => {
-      acc0 += shares0[i];
-      db.prepare("UPDATE tts_job_chunks SET duration_ms = ? WHERE job_id = ? AND idx = ?").run(
-        acc0,
-        jobId,
-        i
+
+    // Thay vi 1 request cho TOAN BO doan (de timeout 20 phut), chia thanh nhieu request ngan.
+    const batches = makeBatches(chunks);
+    const results: { buffer: Buffer; ext: "mp3" | "wav"; provider: "elevenlabs" | "vieneu" | "mock" }[] = [];
+
+    for (let bi = 0; bi < batches.length; bi++) {
+      const batch = batches[bi];
+      batch.indices.forEach((i) =>
+        db.prepare("UPDATE tts_job_chunks SET status = 'running' WHERE job_id = ? AND idx = ?").run(jobId, i)
       );
-    });
+      db.prepare("UPDATE tts_jobs SET current_index = ? WHERE id = ?").run(batch.indices[0], jobId);
 
-    const progressDone = (async () => {
-      let acc = 0;
-      for (let i = 0; i < chunks.length; i++) {
-        db.prepare("UPDATE tts_jobs SET current_index = ? WHERE id = ?").run(i, jobId);
-        db.prepare("UPDATE tts_job_chunks SET status = 'running' WHERE job_id = ? AND idx = ?").run(jobId, i);
-        await new Promise((resolve) => setTimeout(resolve, perChunkMs));
-        acc += shares0[i];
-        db.prepare("UPDATE tts_job_chunks SET status = 'done' WHERE job_id = ? AND idx = ?").run(jobId, i);
-        db.prepare("UPDATE tts_jobs SET done = ?, duration_ms = ? WHERE id = ?").run(i + 1, acc, jobId);
+      let r = await synthesize(batch.text, voice);
+      // That bai -> thu lai 1 lan truoc khi bao loi that (khong tra audio beep)
+      if (r.provider === "mock" && voice.provider === "vieneu") {
+        await new Promise((res) => setTimeout(res, 1200));
+        r = await synthesize(batch.text, voice);
       }
-    })();
+      if (r.provider === "mock" && voice.provider === "vieneu") {
+        throw new Error(
+          "VieNeu-TTS không phản hồi. Hãy kiểm tra cửa sổ app đang chạy, đợi model tải xong rồi bấm 'Tạo lại'."
+        );
+      }
+      results.push({ buffer: r.buffer, ext: r.ext, provider: r.provider });
 
-    // Mot request duy nhat cho TOAN BO doan van -> giong doc lien mach, khong bi gay o ranh gioi cau
-    const r = await synthesize(fullText, voice);
-    await progressDone;
-    const ext = r.ext;
-    const buffer = r.buffer;
-    const durationMs =
-      ext === "wav" && buffer.length >= 44
-        ? Math.round((buffer.readUInt32LE(40) / (buffer.readUInt32LE(24) * 2)) * 1000)
-        : r.durationMs;
-    const provider = r.provider;
-
-    // Chia thoi luong theo ty le ky tu de co moc cau cho Karaoke/Pause
-    // (chi la moc hien thi — KHONG cat audio that)
-    const totalChars = chunks.reduce((n, c) => n + c.length, 0) || 1;
-    let acc = 0;
-    for (let i = 0; i < chunks.length; i++) {
-      const share = Math.round((chunks[i].length / totalChars) * durationMs);
-      acc += share;
-      db.prepare(
-        "UPDATE tts_job_chunks SET duration_ms = ? WHERE job_id = ? AND idx = ?"
-      ).run(acc, jobId, i);
+      const doneCount = batch.indices[batch.indices.length - 1] + 1;
+      const soFarMs = results.reduce((n, x) => n + (x.ext === "wav" ? wavDurationMs(x.buffer) : 0), 0);
+      db.prepare("UPDATE tts_jobs SET done = ?, duration_ms = ? WHERE id = ?").run(
+        doneCount,
+        soFarMs || estimatedAudioMs,
+        jobId
+      );
+      batch.indices.forEach((i) =>
+        db.prepare("UPDATE tts_job_chunks SET status = 'done' WHERE job_id = ? AND idx = ?").run(jobId, i)
+      );
     }
+
+    const ext = results[0]?.ext || "wav";
+    const buffer =
+      ext === "wav" ? concatWavs(results.map((r) => r.buffer), WAV_GAP_MS) : results[0].buffer;
+    const provider = results[0]?.provider || "mock";
+    const durationMs =
+      ext === "wav"
+        ? wavDurationMs(buffer) || results.reduce((n, x) => n + wavDurationMs(x.buffer), 0)
+        : estimatedAudioMs;
+
+    // Moc cau cho Karaoke: moi batch chia theo ty le ky tu, cong doan nghi giua 2 batch
+    let acc = 0;
+    batches.forEach((batch, bi) => {
+      const dur = results[bi].ext === "wav" ? wavDurationMs(results[bi].buffer) : 0;
+      const totalChars = batch.text.replace(/\s/g, "").length || 1;
+      let sub = 0;
+      batch.indices.forEach((i) => {
+        const share = Math.round((chunks[i].replace(/\s/g, "").length / totalChars) * dur);
+        sub += share;
+        db.prepare("UPDATE tts_job_chunks SET duration_ms = ? WHERE job_id = ? AND idx = ?").run(
+          acc + sub,
+          jobId,
+          i
+        );
+      });
+      acc += dur + (bi < batches.length - 1 ? WAV_GAP_MS : 0);
+    });
 
     const filePath = saveAudio(buffer, ext);
     const info = db
