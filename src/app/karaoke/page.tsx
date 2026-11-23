@@ -48,8 +48,12 @@ export default function KaraokeWindow() {
   const urlRef = useRef("");
   const sessionElapsedRef = useRef(0);
   const lastAudioTimeRef = useRef(0);
+  const loopGuardRef = useRef(false);
+  const retryLoadRef = useRef(false);
+  const restartLoopRef = useRef<() => void>(() => {});
+  const playRetryRef = useRef<(a: HTMLAudioElement, attempt?: number) => void>(() => {});
 
-  // (Khoi phuc tu ban cai dat dang chay tot) Tao Audio moi cho moi lan bat dau/chuyen vong
+  // Tao Audio moi cho moi lan bat dau/chuyen vong. Co retry + watchdog de khong bi dung o may khach.
   const startAudio = useCallback((fromSec: number, rate: number) => {
     const url = urlRef.current;
     if (!url) return;
@@ -58,44 +62,89 @@ export default function KaraokeWindow() {
       old.onended = null;
       old.onplay = null;
       old.onpause = null;
+      old.onerror = null;
       try {
-        old.pause();
+        if (!old.ended) old.pause();
       } catch {}
     }
     const a = new Audio(url);
+    a.preload = "auto";
     a.playbackRate = rate;
-    a.currentTime = fromSec;
-    lastAudioTimeRef.current = fromSec;
+    const start = Math.max(0, fromSec || 0);
+    a.currentTime = start;
+    lastAudioTimeRef.current = start;
     a.onplay = () => setPlaying(true);
     a.onpause = () => {
-      if (!pauseReqRef.current) setPlaying(false);
+      // Luc ket thuc, browser cung fire pause -> khong gan nhan "Da dung" o day
+      if (!pauseReqRef.current && !a.ended) setPlaying(false);
     };
-    a.onended = () => {
-      setPlaying(false);
-      if (!autoLoopRef.current) return;
-      const n = loopRef.current + 1;
-      loopRef.current = n;
-      setLoop(n);
-      const factor = LOOP_FACTORS[(n - 1) % LOOP_FACTORS.length];
-      const nextRate = Math.min(2, Math.max(0.5, baseSpeedRef.current * factor));
-      setSpeed(nextRate);
-      setProgress(0);
-      setCurrent(0);
-      pausedAtRef.current = 0;
-      pauseReqRef.current = false;
-      setPauseRequested(false);
-      startAudio(0, nextRate);
+    // Su kien chinh khi het doan; watchdog o interval se lo phan coi khong fire su kien nay
+    a.onended = () => restartLoopRef.current();
+    a.onerror = () => {
+      if (audioRef.current !== a || retryLoadRef.current) return;
+      retryLoadRef.current = true;
+      setError("Lỗi tải audio. Đang thử lại...");
+      setTimeout(() => {
+        retryLoadRef.current = false;
+        if (audioRef.current === a && urlRef.current) startAudio(0, a.playbackRate);
+      }, 800);
     };
     audioRef.current = a;
-    a.play().catch((e) => {
-      fetch("/api/client-error", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `play failed: ${e?.name} ${e?.message}` }),
-      }).catch(() => {});
-      setPlaying(false);
-    });
+    playRetryRef.current(a, 0);
   }, []);
+
+  // Phat audio, tu retry neu browser tu choi (autoplay policy / audio chua san sang)
+  playRetryRef.current = (a: HTMLAudioElement, attempt = 0) => {
+    let p: Promise<void> | undefined;
+    try {
+      p = a.play();
+    } catch {
+      p = undefined;
+    }
+    if (!p || typeof p.catch !== "function") return;
+    p.catch((e: any) => {
+      if (audioRef.current !== a) return;
+      if (attempt < 3) {
+        setTimeout(() => {
+          if (audioRef.current === a) playRetryRef.current(a, attempt + 1);
+        }, 300 * (attempt + 1));
+      } else {
+        setError(`Không thể phát audio (${e?.name || "play error"}). Nhấn ▶ để thử lại.`);
+        setPlaying(false);
+        fetch("/api/client-error", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `play failed after retry: ${e?.name} ${e?.message}` }),
+        }).catch(() => {});
+      }
+    });
+  };
+
+  // Chuyen vong moi: tang luot, doi toc do, bat dau lai tu dau
+  restartLoopRef.current = () => {
+    if (!autoLoopRef.current) {
+      setPlaying(false);
+      return;
+    }
+    // Nguoi dung da nhan Space / Pause: dung o cuoi doan, khong tu phat lai
+    if (pauseReqRef.current) {
+      pauseReqRef.current = false;
+      setPauseRequested(false);
+      setPlaying(false);
+      return;
+    }
+    const n = loopRef.current + 1;
+    loopRef.current = n;
+    setLoop(n);
+    const factor = LOOP_FACTORS[(n - 1) % LOOP_FACTORS.length];
+    const nextRate = Math.min(2, Math.max(0.5, baseSpeedRef.current * factor));
+    setSpeed(nextRate);
+    setProgress(0);
+    setCurrent(0);
+    lastAudioTimeRef.current = 0;
+    pausedAtRef.current = 0;
+    startAudio(0, nextRate);
+  };
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("jobId") || "";
@@ -137,8 +186,27 @@ export default function KaraokeWindow() {
     const timer = setInterval(() => {
       const a = audioRef.current;
       const bs = boundsRef.current;
-      if (!a || a.paused || !bs.length) return;
+      if (!a || !bs.length) return;
       const nowT = a.currentTime;
+
+      // WATCHDOG: mot so may khach khong fire su kien 'ended' -> tu chuyen vong o cuoi file
+      // (dat TRUOC check paused vi thoi diem ket thuc a.paused = true)
+      const dur = a.duration;
+      const atEnd =
+        a.ended ||
+        (Number.isFinite(dur) && dur > 0 && nowT >= dur - 0.25) ||
+        (a.readyState >= 2 && dur > 0 && nowT >= dur - 0.25);
+      if (atEnd && !loopGuardRef.current && !a.seeking) {
+        loopGuardRef.current = true;
+        restartLoopRef.current();
+        setTimeout(() => {
+          loopGuardRef.current = false;
+        }, 700);
+        return;
+      }
+
+      if (a.paused) return;
+
       // Cong don thoi gian chay cua ca phien (khong reset khi audio quay dau)
       let delta = nowT - lastAudioTimeRef.current;
       if (delta < 0 || delta > 1) delta = 0; // bo qua luc tua/luyen

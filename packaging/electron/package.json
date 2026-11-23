@@ -1,6 +1,6 @@
 {
   "name": "text-to-voice-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chuyen van ban thanh giong noi - goi de chay tren Windows",
   "main": "main.js",
   "private": true,
