@@ -48,6 +48,7 @@ export default function KaraokeWindow() {
   const urlRef = useRef("");
   const sessionElapsedRef = useRef(0);
   const lastAudioTimeRef = useRef(0);
+  const knownDurationRef = useRef(0);
   const loopGuardRef = useRef(false);
   const retryLoadRef = useRef(false);
   const restartLoopRef = useRef<() => void>(() => {});
@@ -161,6 +162,7 @@ export default function KaraokeWindow() {
         setBoundaries(r.boundaries || []);
         boundsRef.current = r.boundaries || [];
         if (r.job.resultUrl) urlRef.current = r.job.resultUrl;
+        knownDurationRef.current = (r.job.durationMs || 0) / 1000;
         if (r.job.status !== "done") {
           const t = setInterval(() => {
             load()
@@ -168,6 +170,7 @@ export default function KaraokeWindow() {
                 setJob(x.job);
                 setChunks(x.chunks);
                 if (x.job.resultUrl) urlRef.current = x.job.resultUrl;
+                knownDurationRef.current = (x.job.durationMs || 0) / 1000;
                 if (x.job.status === "done") {
                   setBoundaries(x.boundaries || []);
                   boundsRef.current = x.boundaries || [];
@@ -191,11 +194,11 @@ export default function KaraokeWindow() {
 
       // WATCHDOG: mot so may khach khong fire su kien 'ended' -> tu chuyen vong o cuoi file
       // (dat TRUOC check paused vi thoi diem ket thuc a.paused = true)
-      const dur = a.duration;
+      // File WAV lon: browser co khi tra duration = Infinity -> dung thoi luong DB lam moc
+      const rawDur = a.duration;
+      const dur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : knownDurationRef.current;
       const atEnd =
-        a.ended ||
-        (Number.isFinite(dur) && dur > 0 && nowT >= dur - 0.25) ||
-        (a.readyState >= 2 && dur > 0 && nowT >= dur - 0.25);
+        a.ended || (dur > 0 && nowT >= dur - 0.35);
       if (atEnd && !loopGuardRef.current && !a.seeking) {
         loopGuardRef.current = true;
         restartLoopRef.current();
