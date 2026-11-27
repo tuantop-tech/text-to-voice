@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import db, { now } from "@/lib/db";
 import { authOr401, isResponse, ok, fail } from "@/lib/api";
 import { synthesize } from "@/lib/integrations";
-import { concatWavs, saveAudio, WAV_GAP_MS } from "@/lib/audio";
+import { concatWavs, makeSilenceWav, saveAudio, WAV_GAP_MS } from "@/lib/audio";
 import { uid } from "@/lib/utils";
 import type { Voice } from "@/lib/types";
 
@@ -10,8 +10,11 @@ import type { Voice } from "@/lib/types";
 
 // Chi cat dung ranh gioi cau — KHONG BAO GIO cat giua cau.
 function chunkText(text: string, max = 300): string[] {
+  // Chi cat sau dau cau MA co khoang trong / het dong.
+  // Khong cat dau cham nam giua chu so ([0.3], 300.000, 1.5...)
   const sentences = text
-    .split(/(?<=[.!?…。！？\n])/)
+    .split(/\n+/)
+    .flatMap((p) => p.split(/(?<=[.!?…。！？])(?=\s|$)/))
     .map((s) => s.trim())
     .filter(Boolean);
   if (!sentences.length) return [text];
@@ -35,6 +38,24 @@ function chunkText(text: string, max = 300): string[] {
     if (part) out.push(part);
   }
   return out;
+}
+
+// Tach ky hieu nghi [0.3] -> thoi gian im lang, khong cho TTS doc chu "[0.3]"
+function extractPauses(text: string): { text: string; pauses: number[] } {
+  const pauses: number[] = [];
+  const clean = text
+    .replace(/\[(\d+(?:\.\d+)?)\]/g, (_m, n) => {
+      pauses.push(Math.round(Number(n) * 1000));
+      return " ";
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+  return { text: clean, pauses };
+}
+
+// 300.000 -> 300000 de TTS khong doc thanh "ba tram khong khong khong"
+function normalizeNumbers(text: string) {
+  return text.replace(/\.(?=(\d{3})+(?!\d))/g, "");
 }
 
 // Gom cac cau thanh nhom ngan de moi request VieNeu khong chay qua lau (tranh timeout 20 phut)
@@ -85,18 +106,30 @@ async function runJob(jobId: string, voice: Voice, chunks: string[], fullText: s
       );
       db.prepare("UPDATE tts_jobs SET current_index = ? WHERE id = ?").run(batch.indices[0], jobId);
 
-      let r = await synthesize(batch.text, voice);
+      const { text: cleanText, pauses } = extractPauses(batch.text);
+      const ttsText = normalizeNumbers(cleanText);
+      let r = ttsText ? await synthesize(ttsText, voice) : null;
       // That bai -> thu lai 1 lan truoc khi bao loi that (khong tra audio beep)
-      if (r.provider === "mock" && voice.provider === "vieneu") {
+      if (r && r.provider === "mock" && voice.provider === "vieneu") {
         await new Promise((res) => setTimeout(res, 1200));
-        r = await synthesize(batch.text, voice);
+        r = await synthesize(ttsText, voice);
       }
-      if (r.provider === "mock" && voice.provider === "vieneu") {
+      if (r && r.provider === "mock" && voice.provider === "vieneu") {
         throw new Error(
           "VieNeu-TTS không phản hồi. Hãy kiểm tra cửa sổ app đang chạy, đợi model tải xong rồi bấm 'Tạo lại'."
         );
       }
-      results.push({ buffer: r.buffer, ext: r.ext, provider: r.provider });
+
+      const ext = r?.ext || "wav";
+      let buffer = r?.buffer || Buffer.alloc(0);
+      if (pauses.length && ext === "wav") {
+        const rate = buffer.length >= 44 ? buffer.readUInt32LE(24) : 48000;
+        const pieces = buffer.length
+          ? [buffer, ...pauses.map((ms) => makeSilenceWav(ms, rate))]
+          : pauses.map((ms) => makeSilenceWav(ms, rate));
+        buffer = concatWavs(pieces, 0);
+      }
+      results.push({ buffer, ext, provider: r?.provider || "vieneu" });
 
       const doneCount = batch.indices[batch.indices.length - 1] + 1;
       const soFarMs = results.reduce((n, x) => n + (x.ext === "wav" ? wavDurationMs(x.buffer) : 0), 0);

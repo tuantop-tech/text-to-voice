@@ -8,7 +8,7 @@ Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ l�
 
 👉 **https://github.com/tuantop-tech/text-to-voice/releases/latest**
 
-Tải file `Text to Voice Setup 1.0.4.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
+Tải file `Text to Voice Setup 1.0.5.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
 Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
 Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó dùng offline được.
 
@@ -27,6 +27,7 @@ Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó 
 - 🪟 Cửa sổ riêng **Lời Thoại Phát Live**: chữ Karaoke căn giữa, Play/Pause, phím Space (dừng hết câu → câu kế từ đầu), chỉnh tốc độ, tự đọc lại với tốc độ mới, đồng hồ "Đã chạy (cả phiên)" cộng dồn + "Còn lại".
 - 💾 Tự lưu kịch bản + giọng + audio; chỉ bấm **Tạo mới** mới xóa để làm cái khác.
 - 🧩 Đoạn dài tự chia thành nhiều request nhỏ rồi ghép audio lại, tránh timeout 20 phút và không còn rơi về audio beep. Mốc câu Karaoke được tính theo thời lượng thực của từng request.
+- ⏱️ Hỗ trợ ký hiệu nghỉ `[0.3]`, `[0.5]` trong lời thoại (chèn im lặng thật, TTS không đọc ký hiệu). Không cắt dấu chấm trong số như `300.000`, `[0.3]`.
 
 ## Yêu cầu
 
