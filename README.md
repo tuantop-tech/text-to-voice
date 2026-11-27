@@ -8,7 +8,7 @@ Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ l�
 
 👉 **https://github.com/tuantop-tech/text-to-voice/releases/latest**
 
-Tải file `Text to Voice Setup 1.0.3.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
+Tải file `Text to Voice Setup 1.0.4.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
 Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
 Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó dùng offline được.
 

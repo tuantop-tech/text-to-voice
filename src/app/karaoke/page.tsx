@@ -49,6 +49,7 @@ export default function KaraokeWindow() {
   const sessionElapsedRef = useRef(0);
   const lastAudioTimeRef = useRef(0);
   const knownDurationRef = useRef(0);
+  const errorRetryRef = useRef(0);
   const loopGuardRef = useRef(false);
   const retryLoadRef = useRef(false);
   const restartLoopRef = useRef<() => void>(() => {});
@@ -74,7 +75,11 @@ export default function KaraokeWindow() {
     const start = Math.max(0, fromSec || 0);
     a.currentTime = start;
     lastAudioTimeRef.current = start;
-    a.onplay = () => setPlaying(true);
+    a.onplay = () => {
+      setPlaying(true);
+      setError("");
+      errorRetryRef.current = 0;
+    };
     a.onpause = () => {
       // Luc ket thuc, browser cung fire pause -> khong gan nhan "Da dung" o day
       if (!pauseReqRef.current && !a.ended) setPlaying(false);
@@ -83,12 +88,21 @@ export default function KaraokeWindow() {
     a.onended = () => restartLoopRef.current();
     a.onerror = () => {
       if (audioRef.current !== a || retryLoadRef.current) return;
+      // Mot so browser fire 'error' ngay cuoi file thay vi 'ended' -> xu ly nhu het doan, khong hien loi
+      const known = knownDurationRef.current;
+      const dur = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : known;
+      const nearEnd = a.ended || (dur > 0 && a.currentTime >= dur - 2);
+      if (nearEnd && autoLoopRef.current && !pauseReqRef.current) {
+        restartLoopRef.current();
+        return;
+      }
+      errorRetryRef.current += 1;
+      if (errorRetryRef.current > 2) setError("Lỗi tải audio. Đang thử lại...");
       retryLoadRef.current = true;
-      setError("Lỗi tải audio. Đang thử lại...");
       setTimeout(() => {
         retryLoadRef.current = false;
         if (audioRef.current === a && urlRef.current) startAudio(0, a.playbackRate);
-      }, 800);
+      }, 250);
     };
     audioRef.current = a;
     playRetryRef.current(a, 0);
