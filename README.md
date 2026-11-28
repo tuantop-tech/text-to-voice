@@ -115,5 +115,32 @@ pip install -r vieneu-server/requirements-training.txt
 
 Nếu màn hình báo "Chưa có faster-whisper", server giọng chưa cài thư viện — model `base`/`small` sẽ tự tải về `./data/models/whisper` trong lần đầu chạy (cần internet). Trên máy hiện tại đã test thành công với model `small` trên CPU.
 
-**Giai đoạn 2 (chưa làm)**: đọc `metadata.csv` để LoRA fine-tune VieNeu trên máy GPU, rồi đăng ký giọng mới vào `voices`.
+## 🧠 Fine-tuning Giai đoạn 2 — LoRA
+
+Trong màn hình **Huấn luyện giọng**, sau khi mở một dataset sẽ hiện khu vực **⚙️ Huấn luyện LoRA**:
+
+- Tham số mặc định tối ưu cho GPU 6–8GB: `epochs 3`, `batch 4`, `grad-accum 4` (batch hiệu dụng 16), `lr 2e-4`.
+- Nút **🚀 Bắt đầu huấn luyện** chạy background 3 bước theo đúng script chính thức của https://github.com/pnnbao97/VieNeu-TTS:
+
+```
+finetune/prepare_dataset.py --dataset-dir ./data/datasets/<giọng>
+finetune/train_lora.py --data .../train.parquet --run <giọng> --output-dir .../model --merge
+finetune/merge_lora.py --adapter .../model/<giọng>/adapter --out .../model/<giọng>/merged
+```
+
+- Log terminal và thanh % được ghi realtime vào `finetune_status.json`, UI poll mỗi giây.
+- **Tự kiểm tra `torch.cuda.is_available()`**:
+  - Không có CUDA → **dry-run** trong ~10 giây, in log mô phỏng và tạo model giả lập tại `./data/datasets/<giọng>/model/merged/` để test luồng giao diện.
+  - Có CUDA → chạy pipeline thật.
+
+Chuẩn bị trên máy GPU:
+
+```bash
+git clone https://github.com/pnnbao97/VieNeu-TTS.git ./data/vieneu-src
+cd ./data/vieneu-src && uv sync --extra finetune
+```
+
+Trường "Repo VieNeu-TTS" trong UI mặc định `./vieneu-src` (tương đối bên trong `./data`). Có thể đổi nếu bạn clone chỗ khác; không hardcode đường dẫn máy trong code.
+
+Sau khi train xong, model nằm ở `./data/datasets/<giọng>/model/<giọng>/merged` (dry-run: `.../model/merged`). Giai đoạn tiếp theo (chưa làm): gọi `make_voice.py` để đóng gói embedding và đăng ký giọng vào app.
 

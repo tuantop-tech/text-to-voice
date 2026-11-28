@@ -15,7 +15,8 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from vieneu import Vieneu
-from dataset_prep import prepare_dataset, training_status
+from dataset_prep import prepare_dataset, safe_name, training_status
+from finetune_runner import read_status, start_job
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
@@ -151,6 +152,27 @@ def dataset_prepare(req: PrepareDatasetRequest):
         )
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+class FinetuneStartRequest(BaseModel):
+    data_dir: str
+    voice_name: str
+    params: dict
+    repo_dir: str = ""
+
+
+@app.post("/v1/finetune/start")
+def finetune_start(req: FinetuneStartRequest):
+    try:
+        return start_job(req.data_dir, req.voice_name, req.params, req.repo_dir)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@app.get("/v1/finetune/status")
+def finetune_status(data_dir: str, voice_name: str):
+    root = Path(data_dir).resolve() / "datasets" / safe_name(voice_name)
+    return read_status(root)
 
 
 if __name__ == "__main__":

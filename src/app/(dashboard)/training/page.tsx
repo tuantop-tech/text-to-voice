@@ -17,6 +17,16 @@ type Dataset = {
   segments: Segment[];
 };
 type DatasetItem = { name: string; count: number; createdAt: string; model: string };
+type FinetuneStatus = {
+  status: string;
+  phase?: string;
+  progress: number;
+  log: string[];
+  mode?: string;
+  gpu?: boolean;
+  error?: string;
+  modelDir?: string;
+};
 
 export default function TrainingPage() {
   const [tab, setTab] = useState<"new" | "saved">("new");
@@ -26,6 +36,13 @@ export default function TrainingPage() {
   const [drag, setDrag] = useState(false);
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
+  const [epochs, setEpochs] = useState(3);
+  const [batchSize, setBatchSize] = useState(4);
+  const [lr, setLr] = useState("0.0002");
+  const [repoDir, setRepoDir] = useState("./vieneu-src");
+  const [ft, setFt] = useState<FinetuneStatus | null>(null);
+  const [trainingBusy, setTrainingBusy] = useState(false);
+  const [pollTick, setPollTick] = useState(0);
   const [ready, setReady] = useState<boolean | null>(null);
   const [statusError, setStatusError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,6 +133,55 @@ export default function TrainingPage() {
       setBusy(false);
     }
   }
+
+  async function startTraining() {
+    if (!dataset) return setError("Hãy chuẩn bị dataset trước khi huấn luyện");
+    setTrainingBusy(true);
+    setError("");
+    setNotice("");
+    setFt(null);
+    try {
+      await api("/api/training/finetune/start", {
+        method: "POST",
+        body: JSON.stringify({
+          voice: dataset.voiceName,
+          epochs,
+          batchSize,
+          lr: Number(lr),
+          repoDir,
+        }),
+      });
+      setNotice("Đã bắt đầu huấn luyện. Đang cập nhật log theo thời gian thực...");
+      setPollTick((n) => n + 1);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTrainingBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!dataset?.voiceName) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const r = await api<FinetuneStatus>(
+          `/api/training/finetune/status?voice=${encodeURIComponent(dataset.voiceName)}`
+        );
+        if (!alive) return;
+        setFt(r);
+        if (r.status === "running") timer = setTimeout(poll, 1000);
+      } catch {
+        /* chua co status */
+      }
+    };
+    poll();
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [dataset?.voiceName, pollTick]);
 
   return (
     <div className="space-y-6">
@@ -300,6 +366,70 @@ export default function TrainingPage() {
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {dataset && (
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <div className="mb-1 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">⚙️ Huấn luyện LoRA</h2>
+                {ft && (
+                  <span className={`badge rounded-lg px-3 py-1 text-xs ${ft.gpu ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+                    {ft.gpu ? "GPU CUDA" : ft.mode === "dry_run" ? "DRY-RUN (CPU)" : "Chưa kiểm tra"}
+                  </span>
+                )}
+              </div>
+              <p className="mb-4 text-xs text-slate-500">
+                Mặc định tối ưu cho GPU 6–8GB VRAM: <b>epochs 3</b>, <b>batch 4 × grad-accum 4 = 16</b>,{" "}
+                <b>lr 2e-4</b>. Pipeline: prepare_dataset.py → train_lora.py → merge_lora.py.
+              </p>
+              <div className="grid gap-3 md:grid-cols-4">
+                <label className="block">
+                  <span className="text-xs text-slate-400">Epochs</span>
+                  <input type="number" min={1} value={epochs} onChange={(e) => setEpochs(Number(e.target.value))}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-400">Batch size</span>
+                  <input type="number" min={1} value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-400">Learning rate</span>
+                  <input value={lr} onChange={(e) => setLr(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-400">Repo VieNeu-TTS</span>
+                  <input value={repoDir} onChange={(e) => setRepoDir(e.target.value)}
+                    placeholder="./vieneu-src"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+                </label>
+              </div>
+              <button
+                onClick={startTraining}
+                disabled={trainingBusy || ft?.status === "running"}
+                className="mt-4 w-full rounded-xl bg-violet-500 py-3 text-sm font-semibold text-white hover:bg-violet-400 disabled:opacity-50"
+              >
+                {ft?.status === "running" ? "Đang huấn luyện..." : "🚀 Bắt đầu huấn luyện"}
+              </button>
+
+              {ft && ft.status !== "idle" && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>{ft.phase || ft.status} · {ft.mode === "dry_run" ? "mô phỏng" : ft.mode || "—"}</span>
+                    <span>{ft.progress}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                    <div className="h-full bg-sky-500 transition-all" style={{ width: `${ft.progress}%` }} />
+                  </div>
+                  {ft.error && <p className="text-sm text-rose-300">❌ {ft.error}</p>}
+                  {ft.modelDir && <p className="text-xs text-emerald-300">📦 Model: <code>{ft.modelDir}</code></p>}
+                  <pre className="max-h-64 overflow-y-auto rounded-lg bg-slate-950 p-3 text-[11px] leading-5 text-slate-300">
+                    {(ft.log || []).slice(-80).join("\n")}
+                  </pre>
+                </div>
+              )}
             </section>
           )}
         </>
