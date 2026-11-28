@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
+import wave
 import sys
 import threading
 import time
@@ -92,6 +94,100 @@ def _run_cmd(dataset_dir: Path, state: dict, cmd: list[str], cwd: Path, lo: int,
     return True
 
 
+def _pick_sample(dataset_dir: Path) -> tuple[Path, str, float]:
+    """Chon clip 5-8s (hoac gan nhat) lam audio mau, kem transcript tu segments.json."""
+    seg_file = dataset_dir / "segments.json"
+    texts = {}
+    if seg_file.exists():
+        try:
+            for s in json.loads(seg_file.read_text(encoding="utf-8")).get("segments", []):
+                texts[s.get("file", "")] = s.get("text", "")
+        except Exception:
+            pass
+    best = None
+    for wav in sorted((dataset_dir / "raw_audio").glob("*.wav")):
+        try:
+            with wave.open(str(wav), "rb") as w:
+                dur = w.getnframes() / float(w.getframerate())
+        except Exception:
+            continue
+        score = 0.0 if 5.0 <= dur <= 8.0 else abs(dur - 6.5)
+        if best is None or score < best[0]:
+            best = (score, wav, dur)
+    if best is None:
+        raise ValueError("Không có clip audio nào trong dataset để làm mẫu")
+    return best[1], texts.get(best[1].name, ""), best[2]
+
+
+def package_voice(
+    data_dir: Path,
+    name: str,
+    merged_dir: Path,
+    repo_dir: Path | None,
+    dry_run: bool,
+    state: dict,
+) -> dict:
+    """Dong goi model + audio mau 5-8s vao ./outputs/trained_voices/<ten>."""
+    data_root = Path(data_dir).resolve()
+    out_root = data_root / "outputs" / "trained_voices" / name
+    model_out = out_root / "model"
+    if model_out.exists():
+        shutil.rmtree(model_out)
+    shutil.copytree(merged_dir, model_out)
+
+    sample_src, transcript, duration = _pick_sample(data_root / "datasets" / name)
+    shutil.copy2(sample_src, out_root / "sample.wav")
+    (out_root / "transcript.txt").write_text(transcript, encoding="utf-8")
+
+    if dry_run or repo_dir is None or not (repo_dir / "finetune" / "make_voice.py").exists():
+        (model_out / "voices_v3_turbo.json").write_text(
+            json.dumps({"presets": {}, "default_voice": ""}, ensure_ascii=False, indent=1),
+            encoding="utf-8",
+        )
+        (out_root / "dry_run.json").write_text(
+            json.dumps({"dryRun": True, "reason": "CPU / no CUDA — model giả lập"}, ensure_ascii=False, indent=1),
+            encoding="utf-8",
+        )
+    else:
+        cmd = [
+            sys.executable,
+            repo_dir / "finetune" / "make_voice.py",
+            "--audio", out_root / "sample.wav",
+            "--name", name,
+            "--description", "Giọng đã huấn luyện LoRA",
+            "--out", model_out,
+            "--default",
+        ]
+        _append(data_root / "datasets" / name, state, "$ " + " ".join(str(x) for x in cmd))
+        proc = subprocess.run([str(x) for x in cmd], cwd=str(repo_dir), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+        for line in (proc.stdout or "").splitlines():
+            _append(data_root / "datasets" / name, state, line)
+        if proc.returncode != 0:
+            raise RuntimeError(f"make_voice.py thất bại: {(proc.stderr or '').strip()[:300]}")
+
+    info = {
+        "name": name,
+        "label": f"{name} [Custom Fine-tuned]",
+        "modelDir": f"outputs/trained_voices/{name}/model",
+        "sampleFile": f"outputs/trained_voices/{name}/sample.wav",
+        "transcript": transcript,
+        "sampleDuration": round(duration, 2),
+        "dryRun": dry_run,
+        "createdAt": _now(),
+    }
+    (out_root / "voice.json").write_text(
+        json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    _append(
+        data_root / "datasets" / name,
+        state,
+        f"📦 Đóng gói giọng: {out_root} (mẫu {duration:.1f}s)",
+        99,
+    )
+    return info
+
+
 def _dry_run(dataset_dir: Path, state: dict, name: str, epochs: int, batch: int, lr: float) -> None:
     model_dir = dataset_dir / "model" / "merged"
     adapter_dir = dataset_dir / "model" / "adapter"
@@ -130,6 +226,12 @@ def _dry_run(dataset_dir: Path, state: dict, name: str, epochs: int, batch: int,
         encoding="utf-8",
     )
     (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+    state["phase"] = "packaging"
+    try:
+        state["packaged"] = package_voice(dataset_dir.parent.parent, name, model_dir, None, True, state)
+    except Exception as exc:
+        _append(dataset_dir, state, f"⚠️ Đóng gói mẫu thất bại: {exc}")
 
     state.update(
         {
@@ -209,9 +311,12 @@ def _pipeline(dataset_dir: Path, state: dict, name: str, params: dict, repo_dir:
         ],
         repo_dir,
         88,
-        100,
+        96,
     ):
         raise RuntimeError("merge_lora.py thất bại")
+
+    state["phase"] = "packaging"
+    state["packaged"] = package_voice(dataset_dir.parent.parent, name, merged, repo_dir, False, state)
 
     state.update(
         {

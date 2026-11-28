@@ -4,6 +4,7 @@ import { authOr401, isResponse, ok, fail } from "@/lib/api";
 import { synthesize } from "@/lib/integrations";
 import { concatWavs, makeSilenceWav, saveAudio, WAV_GAP_MS } from "@/lib/audio";
 import { uid } from "@/lib/utils";
+import { getTrainedVoice, type TrainedVoice } from "@/lib/training";
 import type { Voice } from "@/lib/types";
 
 
@@ -89,7 +90,13 @@ function wavDurationMs(buf: Buffer) {
   return 0;
 }
 
-async function runJob(jobId: string, voice: Voice, chunks: string[], fullText: string) {
+async function runJob(
+  jobId: string,
+  voice: Voice,
+  chunks: string[],
+  fullText: string,
+  trained?: TrainedVoice | null
+) {
   try {
     // Dat time luong uoc luong ngay tu dau de UI khong hien 00:00 / 0s
     const estimatedAudioMs = Math.max(1000, Math.round((fullText.length / 18) * 1000));
@@ -108,11 +115,11 @@ async function runJob(jobId: string, voice: Voice, chunks: string[], fullText: s
 
       const { text: cleanText, pauses } = extractPauses(batch.text);
       const ttsText = normalizeNumbers(cleanText);
-      let r = ttsText ? await synthesize(ttsText, voice) : null;
+      let r = ttsText ? await synthesize(ttsText, voice, trained ?? undefined) : null;
       // That bai -> thu lai 1 lan truoc khi bao loi that (khong tra audio beep)
       if (r && r.provider === "mock" && voice.provider === "vieneu") {
         await new Promise((res) => setTimeout(res, 1200));
-        r = await synthesize(ttsText, voice);
+        r = await synthesize(ttsText, voice, trained ?? undefined);
       }
       if (r && r.provider === "mock" && voice.provider === "vieneu") {
         throw new Error(
@@ -194,14 +201,35 @@ export async function POST(req: NextRequest) {
   const user = await authOr401();
   if (isResponse(user)) return user;
 
-  const b = (await req.json()) as { voiceId?: number; text?: string };
+  const b = (await req.json()) as {
+    voiceId?: number;
+    text?: string;
+    trainedVoice?: string;
+  };
   const text = b.text?.trim();
   if (!text) return fail("Nhập đoạn văn cần chuyển thành giọng nói");
 
-  const voice = db.prepare("SELECT * FROM voices WHERE id = ?").get(b.voiceId || 0) as unknown as
+  const trained = b.trainedVoice ? getTrainedVoice(b.trainedVoice) : null;
+  let voice = db.prepare("SELECT * FROM voices WHERE id = ?").get(b.voiceId || 0) as unknown as
     | Voice
     | undefined;
+  if (!voice && trained) {
+    voice = {
+      id: 0,
+      name: trained.name,
+      provider: "vieneu",
+      voice_id: trained.name,
+      sample_path: trained.samplePath,
+      language: "vi",
+      gender: "",
+      created_at: now(),
+      created_by: 0,
+    } as Voice;
+  }
   if (!voice) return fail("Chọn giọng nói trước");
+  if (trained?.dryRun) {
+    return fail(`"${trained.name}" là model giả lập (dry-run) — cần huấn luyện lại trên GPU để đọc giọng thật.`);
+  }
 
   const chunks = chunkText(text);
   const jobId = uid();
@@ -215,7 +243,7 @@ export async function POST(req: NextRequest) {
   chunks.forEach((c, i) => insertChunk.run(jobId, i, c));
 
   // Chay ngam — client se poll GET de xem tien trinh
-  void runJob(jobId, voice, chunks, text);
+  void runJob(jobId, voice, chunks, text, trained);
   return ok({ jobId, total: chunks.length });
 }
 

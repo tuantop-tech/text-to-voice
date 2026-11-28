@@ -144,3 +144,27 @@ Trường "Repo VieNeu-TTS" trong UI mặc định `./vieneu-src` (tương đố
 
 Sau khi train xong, model nằm ở `./data/datasets/<giọng>/model/<giọng>/merged` (dry-run: `.../model/merged`). Giai đoạn tiếp theo (chưa làm): gọi `make_voice.py` để đóng gói embedding và đăng ký giọng vào app.
 
+## 🔊 Fine-tuning Giai đoạn 3 — Đóng gói & dùng giọng đã train
+
+Ngay sau bước `merge_lora.py` (hoặc dry-run), app tự động đóng gói:
+
+```
+./data/outputs/trained_voices/<ten_giong>/
+  model/                model đã merge (+ voices_v3_turbo.json)
+  sample.wav            clip mẫu 5–8s lấy từ dataset
+  transcript.txt        transcript của clip mẫu
+  voice.json            metadata (label, modelDir, dryRun, ...)
+  dry_run.json          chỉ có ở chế độ giả lập
+```
+
+Trên GPU, runner gọi luôn `finetune/make_voice.py --audio sample.wav --name <ten> --out model --default` để ghi embedding vào `voices_v3_turbo.json`.
+
+Màn hình **Chuyển văn bản thành giọng nói** tự quét thư mục trên và thêm nhóm **"Giọng đã train [Custom Fine-tuned]"** vào dropdown chọn giọng. Khi chọn giọng này và bấm tạo audio, server Python khởi tạo:
+
+```python
+Vieneu(mode="v3turbo", backbone_repo="<modelDir>")
+audio = tts.infer(text, voice="<ten>", ref_audio="<sample.wav>", use_ref_codes=False)
+```
+
+Nếu là model giả lập (dry-run trên máy không CUDA), app **hiện thông báo rõ ràng** và dừng lại — không crash, không tạo audio beep. Muốn đọc thật thì train lại trên máy có GPU NVIDIA rồi copy thư mục `./data/outputs/trained_voices/` sang.
+

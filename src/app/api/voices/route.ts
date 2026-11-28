@@ -4,6 +4,7 @@ import { authOr401, isResponse, ok, fail } from "@/lib/api";
 import { getSetting, setSetting } from "@/lib/settings";
 import { saveUpload } from "@/lib/utils";
 import { cloneVoice, hasElevenLabs, hasVieNeu, voiceProvider } from "@/lib/integrations";
+import { listTrainedVoices } from "@/lib/training";
 import type { Voice } from "@/lib/types";
 
 export async function GET() {
@@ -16,6 +17,7 @@ export async function GET() {
     hasVieNeu: hasVieNeu(),
     provider: voiceProvider(),
     defaultVoiceId: Number(getSetting("DEFAULT_VOICE_ID", "0")) || 0,
+    trainedVoices: listTrainedVoices(),
   });
 }
 

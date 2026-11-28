@@ -8,6 +8,12 @@ import type { Voice } from "@/lib/types";
 type Chunk = { idx: number; text: string; status: "pending" | "running" | "done" | "error"; duration_ms: number };
 type Boundary = { idx: number; startMs: number; endMs: number };
 type Preset = { voice_id: string; name: string; gender?: string; featured?: boolean };
+type TrainedVoice = {
+  name: string;
+  label: string;
+  dryRun: boolean;
+  sampleDuration: number;
+};
 type Job = {
   id: string;
   status: "running" | "done" | "error";
@@ -23,7 +29,9 @@ type Job = {
 export default function TextToVoicePage() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [trainedVoices, setTrainedVoices] = useState<TrainedVoice[]>([]);
   const [voiceId, setVoiceId] = useState(0);
+  const [trainedVoice, setTrainedVoice] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
@@ -45,20 +53,23 @@ export default function TextToVoicePage() {
 
   useEffect(() => {
     // Khoi phuc kich ban + giong + audio da luu, roi moi load danh sach giong
-    api<{ state: { text: string; voiceId: string; jobId: string } }>("/api/app-state")
+    api<{ state: { text: string; voiceId: string; jobId: string; trainedVoice?: string } }>("/api/app-state")
       .then((r) => {
         const savedText = r.state.text || "";
         const savedVoiceId = Number(r.state.voiceId) || 0;
         const savedJobId = r.state.jobId || "";
+        const savedTrained = r.state.trainedVoice || "";
         if (savedText) setText(savedText);
         if (savedJobId) poll(savedJobId);
+        if (savedTrained) setTrainedVoice(savedTrained);
         return savedVoiceId;
       })
       .catch(() => 0)
       .then((savedVoiceId) => {
-        api<{ voices: Voice[]; defaultVoiceId?: number }>("/api/voices")
+        api<{ voices: Voice[]; defaultVoiceId?: number; trainedVoices?: TrainedVoice[] }>("/api/voices")
           .then((r) => {
             setVoices(r.voices);
+            setTrainedVoices(r.trainedVoices || []);
             if (savedVoiceId && r.voices.some((v) => v.id === savedVoiceId)) {
               setVoiceId(savedVoiceId);
             } else if (r.defaultVoiceId && r.voices.some((v) => v.id === r.defaultVoiceId)) {
@@ -79,6 +90,13 @@ export default function TextToVoicePage() {
   }, []);
 
   async function chooseVoice(value: string) {
+    if (value.startsWith("trained|")) {
+      setTrainedVoice(value.slice(8));
+      setVoiceId(0);
+      setError("");
+      return;
+    }
+    setTrainedVoice("");
     if (value.startsWith("preset|")) {
       const name = value.slice(7);
       try {
@@ -121,7 +139,7 @@ export default function TextToVoicePage() {
 
   async function create() {
     if (!text.trim()) return setError("Nhập đoạn văn cần chuyển thành giọng nói");
-    if (!voiceId) return setError("Chọn giọng trong Thư viện giọng");
+    if (!voiceId && !trainedVoice) return setError("Chọn giọng trong Thư viện giọng");
     setBusy(true);
     setError("");
     setJob(null);
@@ -135,6 +153,7 @@ export default function TextToVoicePage() {
     try {
       const res = await post<{ jobId: string; total: number }>("/api/tts", {
         voiceId,
+        trainedVoice: trainedVoice || undefined,
         text: text.trim(),
       });
       setJob({
@@ -151,7 +170,12 @@ export default function TextToVoicePage() {
       // Luu kich ban + giong + job de khoi phuc lan sau
       api("/api/app-state", {
         method: "PUT",
-        body: JSON.stringify({ text: text.trim(), voiceId, jobId: res.jobId }),
+        body: JSON.stringify({
+          text: text.trim(),
+          voiceId,
+          trainedVoice,
+          jobId: res.jobId,
+        }),
       }).catch(() => {});
       poll(res.jobId);
     } catch (err) {
@@ -303,8 +327,23 @@ export default function TextToVoicePage() {
         <div>
           <label className="label">Giọng nói</label>
           <div className="flex gap-2">
-            <select className="select" value={voiceId || ""} onChange={(e) => chooseVoice(e.target.value)}>
+            <select
+              className="select"
+              value={trainedVoice ? `trained|${trainedVoice}` : voiceId || ""}
+              onChange={(e) => chooseVoice(e.target.value)}
+            >
               <option value="">— Chọn giọng —</option>
+              {trainedVoices.length > 0 && (
+                <optgroup label="Giọng đã train [Custom Fine-tuned]">
+                  {trainedVoices.map((v) => (
+                    <option key={v.name} value={`trained|${v.name}`}>
+                      [Custom Fine-tuned] {v.name}
+                      {v.dryRun ? " (dry-run)" : ""}
+                      {v.sampleDuration ? ` · mẫu ${v.sampleDuration}s` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               {voices.length > 0 && (
                 <optgroup label="Giọng đã lưu">
                   {voices.map((v) => (

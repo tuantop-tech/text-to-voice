@@ -18,6 +18,19 @@ export type Dataset = {
   segments: Segment[];
 };
 
+export type TrainedVoice = {
+  name: string;
+  label: string;
+  modelDir: string;
+  sampleFile: string;
+  transcript: string;
+  sampleDuration: number;
+  dryRun: boolean;
+  createdAt: string;
+  modelPath: string;
+  samplePath: string;
+};
+
 /** Ten giong -> ten thu muc an toan (khong cho di ra ngoai ./data/datasets) */
 export function safeVoiceName(raw: string): string {
   const name = (raw || "")
@@ -99,4 +112,42 @@ export function voiceServerBase(): string {
   )
     .replace(/\/+$/, "")
     .replace(/\/v1$/, "");
+}
+
+export const trainedVoicesRoot = path.join(paths.dataDir, "outputs", "trained_voices");
+fs.mkdirSync(trainedVoicesRoot, { recursive: true });
+
+function toTrainedVoice(dir: string, name: string): TrainedVoice | null {
+  const file = path.join(dir, name, "voice.json");
+  if (!fs.existsSync(file)) return null;
+  try {
+    const v = JSON.parse(fs.readFileSync(file, "utf8")) as Omit<
+      TrainedVoice,
+      "modelPath" | "samplePath"
+    >;
+    if (!v.name) return null;
+    return {
+      ...v,
+      label: v.label || `${v.name} [Custom Fine-tuned]`,
+      modelPath: path.join(paths.dataDir, v.modelDir),
+      samplePath: path.join(paths.dataDir, v.sampleFile),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function listTrainedVoices(): TrainedVoice[] {
+  if (!fs.existsSync(trainedVoicesRoot)) return [];
+  return fs
+    .readdirSync(trainedVoicesRoot, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => toTrainedVoice(trainedVoicesRoot, e.name))
+    .filter((v): v is TrainedVoice => Boolean(v))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function getTrainedVoice(name: string): TrainedVoice | null {
+  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) return null;
+  return toTrainedVoice(trainedVoicesRoot, safeVoiceName(name));
 }

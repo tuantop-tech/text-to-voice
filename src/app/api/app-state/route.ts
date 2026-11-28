@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import db from "@/lib/db";
 import { authOr401, isResponse, ok, fail } from "@/lib/api";
 
-const KEYS = ["text", "voiceId", "jobId"];
+const KEYS = ["text", "voiceId", "jobId", "trainedVoice"];
 
 export async function GET() {
   const user = await authOr401();
@@ -11,7 +11,7 @@ export async function GET() {
     key: string;
     value: string;
   }[];
-  const state: Record<string, string> = { text: "", voiceId: "0", jobId: "" };
+  const state: Record<string, string> = { text: "", voiceId: "0", jobId: "", trainedVoice: "" };
   for (const r of rows) state[r.key] = r.value;
   return ok({ state });
 }

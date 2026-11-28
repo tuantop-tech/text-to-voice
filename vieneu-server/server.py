@@ -22,6 +22,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 app = FastAPI(title="VieNeu TTS API")
 _tts = None
+_custom_engines: dict[str, object] = {}
 FEATURED = (
     "Adam bựa", "Trúc Ly", "Thiện Minh", "Mai Anh", "Hải Đăng",
     "Thùy Dung", "Thiền Tâm Đức", "Ngọc Huyền", "Quang Sơn", "Ngọc Trân",
@@ -84,13 +85,37 @@ class SpeechRequest(BaseModel):
     stream_format: str = "audio"
     speed: float | None = None
     sample_rate: int = 48000
+    backbone_repo: str | None = None
+    ref_audio: str | None = None
+    use_ref_codes: bool = True
 
 
 @app.post("/v1/audio/speech")
 def speech(req: SpeechRequest):
     if req.response_format.lower() != "wav":
         return JSONResponse({"error": "chi ho tro wav"}, status_code=400)
-    audio = engine().infer(req.input, voice=req.voice)
+    try:
+        if req.backbone_repo:
+            repo = req.backbone_repo
+            if not os.path.isdir(repo):
+                return JSONResponse({"error": "Không tìm thấy thư mục model đã train: " + repo}, status_code=400)
+            if os.path.exists(os.path.join(os.path.dirname(repo), "dry_run.json")):
+                return JSONResponse(
+                    {"error": "Model giả lập (dry-run) — chỉ dùng để test UI. Hãy train trên GPU để đọc giọng thật."},
+                    status_code=400,
+                )
+            if repo not in _custom_engines:
+                _custom_engines[repo] = Vieneu(mode="v3turbo", backbone_repo=repo)
+            audio = _custom_engines[repo].infer(
+                req.input,
+                ref_audio=req.ref_audio,
+                voice=req.voice,
+                use_ref_codes=req.use_ref_codes,
+            )
+        else:
+            audio = engine().infer(req.input, voice=req.voice)
+    except Exception as exc:
+        return JSONResponse({"error": f"Lỗi tạo giọng đã train: {exc}"}, status_code=400)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)

@@ -8,6 +8,7 @@ setGlobalDispatcher(
 );
 import { getSetting } from "./settings";
 import type { RewriteMode, Voice } from "./types";
+import type { TrainedVoice } from "./training";
 
 const elKey = () => getSetting("ELEVENLABS_API_KEY", process.env.ELEVENLABS_API_KEY || "");
 const llmKey = () => getSetting("LLM_API_KEY", process.env.LLM_API_KEY || "");
@@ -45,7 +46,43 @@ function estimateDuration(text: string) {
   return Math.max(1200, text.length * 90);
 }
 
-export async function synthesize(text: string, voice: Voice): Promise<TtsResult> {
+async function synthesizeTrained(text: string, trained: TrainedVoice): Promise<TtsResult> {
+  if (trained.dryRun) {
+    throw new Error(
+      `"${trained.name}" là model GIẢ LẬP (dry-run) tạo trên máy không có GPU. ` +
+        "Chỉ dùng để test giao diện — hãy huấn luyện lại trên máy có CUDA để đọc giọng thật."
+    );
+  }
+  const res = await fetch(`${vieneuBase()}/audio/speech`, {
+    method: "POST",
+    headers: vieneuHeaders(),
+    body: JSON.stringify({
+      model: "vieneu-v3-turbo",
+      input: text,
+      voice: trained.name,
+      backbone_repo: trained.modelPath,
+      ref_audio: trained.samplePath,
+      use_ref_codes: false,
+      response_format: "wav",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Lỗi đọc bằng giọng đã train: ${(await res.text()).slice(0, 300)}`);
+  }
+  return {
+    buffer: Buffer.from(await res.arrayBuffer()),
+    ext: "wav",
+    provider: "vieneu",
+    durationMs: estimateDuration(text),
+  };
+}
+
+export async function synthesize(
+  text: string,
+  voice: Voice,
+  trained?: TrainedVoice
+): Promise<TtsResult> {
+  if (trained) return synthesizeTrained(text, trained);
   // 1) VieNeu-TTS — OpenAI-compatible /v1/audio/speech, chay local
   if (voice.provider === "vieneu" && vieneuBase()) {
     try {
