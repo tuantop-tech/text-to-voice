@@ -1,4 +1,4 @@
-# Hướng dẫn chạy dự án trên máy có GPU NVIDIA
+﻿# Hướng dẫn chạy dự án trên máy có GPU NVIDIA
 
 Mục tiêu: mang toàn bộ source sang máy GPU, cài môi trường, chạy app và dùng giọng **Fine-tuned** thật.
 
