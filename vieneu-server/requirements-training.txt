@@ -1,0 +1,6 @@
+# Giai doan 1 - chuan bi dataset fine-tuning (chay duoc CPU, khong bat buoc GPU)
+faster-whisper>=1.1.0
+av>=13.0.0
+numpy>=1.26.0
+
+# Da co trong goi app: fastapi, uvicorn, pydantic

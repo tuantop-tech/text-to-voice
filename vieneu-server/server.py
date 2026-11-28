@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from vieneu import Vieneu
+from dataset_prep import prepare_dataset, training_status
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
@@ -117,6 +118,39 @@ def add_voice(
     finally:
         os.unlink(path)
     return {"id": name, "name": name, "object": "voice"}
+
+
+class PrepareDatasetRequest(BaseModel):
+    data_dir: str
+    voice_name: str
+    files: list[str]
+    model: str = "base"
+
+
+@app.get("/v1/training/status")
+def training_status_endpoint():
+    return training_status()
+
+
+@app.post("/v1/dataset/prepare")
+def dataset_prepare(req: PrepareDatasetRequest):
+    """Cat cac file ghi am dai thanh clip 3-15s va transcribed bang faster-whisper CPU."""
+    try:
+        if not req.files:
+            raise ValueError("Chua co file ghi am nao")
+        missing = [f for f in req.files if not os.path.exists(f)]
+        if missing:
+            raise ValueError("Khong tim thay file upload: " + missing[0])
+        return prepare_dataset(req.data_dir, req.voice_name, req.files, req.model)
+    except ImportError:
+        return JSONResponse(
+            {
+                "error": "Chua cai faster-whisper. Chay: pip install -r vieneu-server/requirements-training.txt"
+            },
+            status_code=400,
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 if __name__ == "__main__":

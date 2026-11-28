@@ -28,6 +28,7 @@ Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó 
 - 💾 Tự lưu kịch bản + giọng + audio; chỉ bấm **Tạo mới** mới xóa để làm cái khác.
 - 🧩 Đoạn dài tự chia thành nhiều request nhỏ rồi ghép audio lại, tránh timeout 20 phút và không còn rơi về audio beep. Mốc câu Karaoke được tính theo thời lượng thực của từng request.
 - ⏱️ Hỗ trợ ký hiệu nghỉ `[0.3]`, `[0.5]` trong lời thoại (chèn im lặng thật, TTS không đọc ký hiệu). Không cắt dấu chấm trong số như `300.000`, `[0.3]`.
+- 🧠 **Giai đoạn 1 Fine-tuning (thử nghiệm)**: màn hình "Huấn luyện giọng", upload ghi âm dài → tự cắt clip 3–15s + nhận diện chữ bằng `faster-whisper` CPU → nghe thử/sửa text → lưu `./data/datasets/<tên giọng>/metadata.csv`. Chi tiết ở cuối README.
 
 ## Yêu cầu
 
@@ -88,3 +89,31 @@ data/                           DB + audio (đã gitignore)
 - Trên CPU, VieNeu RTF ≈ 0.5 → đoạn rất dài có thể mất vài phút; app chạy ngầm và hiển thị tiến trình.
 - Clone giọng người khác cần sự đồng ý của họ.
 - Không commit `data/`, `.env`, `node_modules` lên git.
+
+## 🧠 Fine-tuning Giai đoạn 1 — Chuẩn bị dataset
+
+Màn hình **Huấn luyện giọng (Fine-tuning)** trong sidebar. Luồng xử lý:
+
+```
+upload .wav/.mp3 (có thể nhiều file)
+  → ./data/datasets/<tên giọng>/uploads/
+  → cắt theo đoạn im lặng thành clip 3–15 giây (16kHz mono)
+  → ./data/datasets/<tên giọng>/raw_audio/clip_0001.wav ...
+  → faster-whisper (CPU, model base hoặc small) nhận diện tiếng Việt
+  → ./data/datasets/<tên giọng>/metadata.csv   (clip_0001.wav|nội dung)
+  → ./data/datasets/<tên giọng>/segments.json  (để UI sửa text)
+  → nghe thử / sửa chính tả → bấm "Lưu thay đổi" (ghi lại metadata.csv)
+```
+
+Thư mục luôn tính tương đối từ `DATA_DIR` (mặc định `./data` theo `process.cwd()`), không hardcode đường dẫn máy — code được trên máy không GPU, chuyển sang máy GPU vẫn chạy nguyên.
+
+Cài dependency trên máy sẽ train (có GPU NVIDIA):
+
+```bash
+pip install -r vieneu-server/requirements-training.txt
+```
+
+Nếu màn hình báo "Chưa có faster-whisper", server giọng chưa cài thư viện — model `base`/`small` sẽ tự tải về `./data/models/whisper` trong lần đầu chạy (cần internet). Trên máy hiện tại đã test thành công với model `small` trên CPU.
+
+**Giai đoạn 2 (chưa làm)**: đọc `metadata.csv` để LoRA fine-tune VieNeu trên máy GPU, rồi đăng ký giọng mới vào `voices`.
+

@@ -7,6 +7,7 @@ import type { PublicUser } from "@/lib/types";
 const links = [
   { href: "/dashboard", icon: "🎙️", label: "Chuyển văn bản" },
   { href: "/voices", icon: "♫", label: "Thư viện giọng" },
+  { href: "/training", icon: "🧠", label: "Huấn luyện giọng (Fine-tuning)" },
   { href: "/settings", icon: "⚙", label: "Cài đặt" },
 ];
 
