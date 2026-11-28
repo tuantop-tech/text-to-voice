@@ -8,7 +8,12 @@ Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ l�
 
 👉 **https://github.com/tuantop-tech/text-to-voice/releases/latest**
 
-Tải file `Text to Voice Setup 1.0.5.exe` (~602 MB), chạy cài đặt, mở app từ Start Menu.
+Có **2 bản cài riêng biệt**, cài được cùng lúc trên một máy:
+
+- **Bản ổn định (CPU, không Fine-tuning)**: `Text to Voice Setup 1.0.5.exe` — 👉 https://github.com/tuantop-tech/text-to-voice/releases/tag/v1.0.5
+- **Bản GPU (có Fine-tuning LoRA 4 giai đoạn)**: `Text to Voice GPU Setup 2.0.0.exe` — 👉 https://github.com/tuantop-tech/text-to-voice/releases/latest
+
+Chạy file Setup tương ứng, mở app từ Start Menu (tên shortcut khác nhau, dữ liệu tách biệt).
 Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
 Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó dùng offline được.
 
