@@ -23,6 +23,7 @@ export default function TrainingPage() {
   const [voiceName, setVoiceName] = useState("");
   const [model, setModel] = useState("base");
   const [files, setFiles] = useState<File[]>([]);
+  const [drag, setDrag] = useState(false);
   const [dataset, setDataset] = useState<Dataset | null>(null);
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
   const [ready, setReady] = useState<boolean | null>(null);
@@ -179,19 +180,71 @@ export default function TrainingPage() {
                 </select>
               </label>
             </div>
-            <label className="block">
+            <div>
               <span className="text-xs text-slate-400">File ghi âm dài (.wav, .mp3)</span>
-              <input
-                type="file"
-                multiple
-                accept=".wav,.mp3,.m4a,.ogg,.flac,audio/*"
-                onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                className="mt-1 w-full text-sm text-slate-300"
-              />
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDrag(true);
+                }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDrag(false);
+                  setFiles((cur) => [...cur, ...Array.from(e.dataTransfer.files)]);
+                }}
+                className={`mt-1 rounded-xl border-2 border-dashed p-6 text-center transition ${
+                  drag ? "border-sky-400 bg-sky-500/10" : "border-slate-700 bg-slate-950/40"
+                }`}
+              >
+                <input
+                  id="voice-files"
+                  type="file"
+                  multiple
+                  accept=".wav,.mp3,.m4a,.ogg,.flac,audio/*"
+                  onChange={(e) => setFiles((cur) => [...cur, ...Array.from(e.target.files || [])])}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="voice-files"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-sky-500 px-6 py-3 text-sm font-semibold text-white hover:bg-sky-400"
+                >
+                  📁 Chọn file ghi âm
+                </label>
+                <p className="mt-2 text-xs text-slate-500">
+                  hoặc kéo thả file vào đây — có thể chọn nhiều file cùng lúc
+                </p>
+              </div>
+
               {files.length > 0 && (
-                <p className="mt-1 text-xs text-slate-500">Đã chọn {files.length} file.</p>
+                <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-medium text-slate-300">Đã chọn {files.length} file</p>
+                    <button
+                      type="button"
+                      onClick={() => setFiles([])}
+                      className="text-xs text-rose-400 hover:text-rose-300"
+                    >
+                      Xóa tất cả
+                    </button>
+                  </div>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto">
+                    {files.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="flex items-center justify-between text-xs text-slate-400">
+                        <span className="truncate">{f.name} ({(f.size / 1048576).toFixed(1)} MB)</span>
+                        <button
+                          type="button"
+                          onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
+                          className="ml-3 text-rose-400 hover:text-rose-300"
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-            </label>
+            </div>
             <button
               type="submit"
               disabled={busy}
