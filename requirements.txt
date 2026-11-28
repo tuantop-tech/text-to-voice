@@ -1,0 +1,35 @@
+# ============================================================
+# Text-to-Voice app — Python dependencies (chay duoc CPU, train can CUDA)
+# Cai dat: pip install -r requirements.txt
+# PyTorch CUDA nen cai RIENG bang lenh trong HUONG_DAN_CHAY_GPU.md
+# ============================================================
+
+# --- API server (FastAPI) ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+python-multipart>=0.0.9
+
+# --- Audio / ASR (Giai doan 1) ---
+numpy>=1.26
+soundfile>=0.12
+av>=13.0
+faster-whisper>=1.1.0
+
+# --- VieNeu-TTS (TTS + fine-tuning) ---
+vieneu>=3.0
+transformers>=4.44
+peft>=0.13
+accelerate>=0.34
+datasets>=2.20
+pyarrow>=16.0
+huggingface_hub>=0.24
+sentencepiece>=0.2
+
+# --- Unsloth (toa toc LoRA, tuy chon nhung khuyen nghi tren GPU) ---
+# Neu pip bao xung dot torch / transformers, co the bo dong nay va
+# van chay binh thuong voi peft + transformers + accelerate o tren.
+unsloth>=2024.10
+
+# --- CUDA PyTorch se duoc cai bang lenh rieng (xem HUONG_DAN_CHAY_GPU.md) ---
+# torch>=2.2.0   <- KHONG dat o day, de tranh cai nham ban CPU

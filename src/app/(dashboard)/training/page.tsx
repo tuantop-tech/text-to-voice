@@ -211,7 +211,7 @@ export default function TrainingPage() {
       {ready === false && (
         <div className="rounded-xl border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-200">
           ⚠️ Server giọng chưa có <b>faster-whisper</b>. Cài trên máy sẽ train:{" "}
-          <code>pip install -r vieneu-server/requirements-training.txt</code>
+          <code>pip install -r requirements.txt</code>
           {statusError && <p className="mt-1 text-xs text-amber-300/80">{statusError}</p>}
         </div>
       )}

@@ -18,6 +18,8 @@ Lần đầu chạy cần internet để tải model VieNeu (~300 MB); sau đó 
 
 *Lưu ý: file EXE không nằm trong repo (GitHub giới hạn 100 MB/file) mà được đăng ở mục Releases.*
 
+👉 **Chuyển dự án sang máy có GPU NVIDIA để train LoRA thật:** xem [`HUONG_DAN_CHAY_GPU.md`](HUONG_DAN_CHAY_GPU.md) (venv + PyTorch CUDA + `requirements.txt` + lệnh chạy app).
+
 ## Tính năng
 
 - 🎙️ Chuyển văn bản thành giọng nói tiếng Việt (không giới hạn độ dài).
@@ -110,7 +112,7 @@ Thư mục luôn tính tương đối từ `DATA_DIR` (mặc định `./data` th
 Cài dependency trên máy sẽ train (có GPU NVIDIA):
 
 ```bash
-pip install -r vieneu-server/requirements-training.txt
+pip install -r requirements.txt
 ```
 
 Nếu màn hình báo "Chưa có faster-whisper", server giọng chưa cài thư viện — model `base`/`small` sẽ tự tải về `./data/models/whisper` trong lần đầu chạy (cần internet). Trên máy hiện tại đã test thành công với model `small` trên CPU.

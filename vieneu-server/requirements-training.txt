@@ -1,3 +1,5 @@
+# File cu — ban day du chuyen sang requirements.txt o root du an.
+# Chay: pip install -r requirements.txt
 # Giai doan 1 - chuan bi dataset fine-tuning (chay duoc CPU, khong bat buoc GPU)
 faster-whisper>=1.1.0
 av>=13.0.0
