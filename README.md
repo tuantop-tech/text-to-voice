@@ -11,7 +11,7 @@ Không có phòng live, kịch bản, hàng đợi hay bình luận — chỉ l�
 Có **2 bản cài riêng biệt**, cài được cùng lúc trên một máy:
 
 - **Bản ổn định (CPU, không Fine-tuning)**: `Text to Voice Setup 1.0.5.exe` — 👉 https://github.com/tuantop-tech/text-to-voice/releases/tag/v1.0.5
-- **Bản GPU (có Fine-tuning LoRA 4 giai đoạn)**: `Text to Voice GPU Setup 2.0.0.exe` — 👉 https://github.com/tuantop-tech/text-to-voice/releases/latest
+- **Bản GPU (có Fine-tuning LoRA 4 giai đoạn, kèm faster-whisper)**: `Text to Voice GPU Setup 2.0.1.exe` — 👉 https://github.com/tuantop-tech/text-to-voice/releases/latest
 
 Chạy file Setup tương ứng, mở app từ Start Menu (tên shortcut khác nhau, dữ liệu tách biệt).
 Đăng nhập: `admin` / `admin123`. Mặc định dùng **VieNeu-TTS** + giọng **Phương** (đã đóng gói sẵn).
