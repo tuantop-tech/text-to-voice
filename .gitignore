@@ -3,6 +3,7 @@ node_modules
 data
 .env
 *.log
+__pycache__/
 packaging/runtime/
 packaging/electron/node_modules/
 packaging/electron/dist/
